@@ -71,8 +71,8 @@ gen_diff $FILE1_ASN1 $FILE2_ASN1
 FILE1_DERDUMP="$FILE1.derdump"
 FILE2_DERDUMP="$FILE2.derdump"
 
-/usr/lib64/nss/unsupported-tools/derdump -r < $FILE1_DER > $FILE1_DERDUMP
-/usr/lib64/nss/unsupported-tools/derdump -r < $FILE2_DER > $FILE2_DERDUMP
+$DERDUMP -r < $FILE1_DER > $FILE1_DERDUMP
+$DERDUMP -r < $FILE2_DER > $FILE2_DERDUMP
 
 echo
 echo "derdump output"
