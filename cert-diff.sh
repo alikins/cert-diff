@@ -31,6 +31,8 @@ gen_diff() {
 #   openssl asn1parse -in /etc/pki/consumer/cert.pem -inform PEM -i
 #   openssl x509 -outform DER -i $INFILE | /usr/lib64/nss/unsupported-tools/derdump -r
 
+#FIXME: should split pem file bundles into multiple files
+
 # use textout options to cleanup diff?
 FILE1_TXT="$FILE1.txt"
 openssl x509 -text -in $FILE1 > $FILE1.txt
