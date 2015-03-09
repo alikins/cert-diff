@@ -63,6 +63,14 @@ class Pem(object):
         for pem_blob_data in self.split(self.fo):
             yield pem_blob_data
 
+
+    # re.finditer() isn't great for huge strings with back references.
+    # A test case with a thousand pems in it uses 100% cpu for minutes.
+    # However... just using re.split to match on begin lines is fast, though
+    # likely uses a lot of memory. May make sense to split into small chunks
+    # (say, 10 END lines) and re.finditer() in the result. Otherwise, finditer
+    # blocks until it's ran over the entirestring
+
     # This can likely all be replaced with a re.finditer()
     # This doesn't handle bogus pem files well, with missing
     # BEGIN or END lines
@@ -74,15 +82,37 @@ class Pem(object):
         pem_end_marker = None
         pem_counter = 0
 
+        current_blob = None
+
         for line in pem_line_rdr:
+            # if we are BEGIN'ing a pem, create a blob buffer
+            # Note, if we see a two BEGIN in a row without an END, we ignore
+            # the first one and create a new one
             if line.startswith(self.pem_begin):
                 pem_start_marker = line
                 buffer_lines.append(line)
+                # create a buffer and do the type lookup by beginline
+                # current_blob = PemBlobBuffer(data=line,
+                # filename=self.filename,pem_type=pem_type,count=pem_counter)
                 pem_type = PemTypes.lookup_by_beginline(line)
                 continue
 
+            # this doesn't look like a pem, so ignore it
+            #if not current_blob:
+            #    continue
+
+            # if we are ending one, yield the blob buffer
             if line.startswith(self.pem_end):
                 pem_end_marker = line
+                # current_blob.end(line)
+                # yield current_blob
+                # current_blob = None
+                # pem_counter += 1
+
+            # if we have started a blob, add any lines to it
+            #if current_blob:
+            #    current_blob.append(line)
+            #    continue
 
             buffer_lines.append(line)
 
