@@ -75,13 +75,7 @@ class Pem(object):
     # This doesn't handle bogus pem files well, with missing
     # BEGIN or END lines
     def split(self, pem_line_rdr):
-        buffer_lines = []
-
-        pem_type = None
-        pem_start_marker = None
-        pem_end_marker = None
         pem_counter = 0
-
         current_blob = None
 
         for line in pem_line_rdr:
@@ -89,50 +83,30 @@ class Pem(object):
             # Note, if we see a two BEGIN in a row without an END, we ignore
             # the first one and create a new one
             if line.startswith(self.pem_begin):
-                pem_start_marker = line
-                buffer_lines.append(line)
                 # create a buffer and do the type lookup by beginline
-                # current_blob = PemBlobBuffer(data=line,
-                # filename=self.filename,pem_type=pem_type,count=pem_counter)
-                pem_type = PemTypes.lookup_by_beginline(line)
+                current_blob = PemBlobData(filename=self.filename)
+                current_blob.firstline(line)
                 continue
 
             # this doesn't look like a pem, so ignore it
-            #if not current_blob:
-            #    continue
-
-            # if we are ending one, yield the blob buffer
-            if line.startswith(self.pem_end):
-                pem_end_marker = line
-                # current_blob.end(line)
-                # yield current_blob
-                # current_blob = None
-                # pem_counter += 1
-
-            # if we have started a blob, add any lines to it
-            #if current_blob:
-            #    current_blob.append(line)
-            #    continue
-
-            buffer_lines.append(line)
-
-            if not pem_start_marker or not pem_end_marker:
+            if not current_blob:
                 continue
 
-            # end of blob, buffer_lines is a complete blob
-            pem_blob_data = PemBlobData(data=''.join(buffer_lines),
-                                        filename=self.filename,
-                                        pem_type=pem_type,
-                                        count=pem_counter)
+            #log.debug(current_blob)
+            # in mid-pem blob, not the end
+            if not line.startswith(self.pem_end):
+                current_blob.append(line)
+                continue
 
-            buffer_lines = []
+            # mid pem, and at the end
+            current_blob.end(line)
+            current_blob.count = pem_counter
 
-            pem_type = None
-            pem_start_marker = None
-            pem_end_marker = None
+            log.debug("yield current_blob %s", pem_counter)
+            yield current_blob
+
+            current_blob = None
             pem_counter += 1
-
-            yield pem_blob_data
 
 
 # could be a factory or metaclass
@@ -199,14 +173,38 @@ class PemBlobData(object):
     filename, pem_type, and count are metadata used in generating the
     name of the file we save the chunk in.
     """
-    def __init__(self, data=None, filename=None, pem_type=None, count=None):
-        self.data = data
+    def __init__(self, data=None, filename=None,
+                 pem_type=None, count=None):
+        self.data = data or []
         self.filename = filename
         self.pem_type = pem_type
         # used to uniqify each output file
-        self.count = count or 0
+        self.count = None
+
+    def append_line(self, line):
+        """Clean up trailing whitespace but preserve newline."""
+        self.append("%s\n" % line.strip())
+
+    def append(self, data):
+        self.data.append(data)
+
+    # set or start or send better?
+    def firstline(self, line):
+        self.append_line(line)
+        self.pem_type = PemTypes.lookup_by_beginline(line)
+
+    def end(self, line):
+        self.append_line(line)
+
+    def __str__(self):
+        return ''.join(self.data)
 
 
+# a pem writer that didn't block would be faster...
+# thread pool? names should be uniq, but we could gen
+# them first to verify (though that means waiting for all
+# before we proceed). Or just assume we are picking names
+# that won't clobber
 def write_pem(pem_blob):
     path = pem_blob.filename
 
@@ -216,17 +214,20 @@ def write_pem(pem_blob):
 
     basename = os.path.basename(path)
     parts = basename.split('.')
-    name = ''.join(parts[:-1])
-    part_name = "%s-%s_%d" % (name,
-                              pem_blob.pem_type,
-                              pem_blob.count)
-    new_file_name = "%s.pem" % part_name
+    orig_filename = ''.join(parts[:-1])
 
-    log.debug("path %s, basename %s, parts %s, name %s, "
+    # part_name = "{count:d}-{orig_filename}.{pem_type}.pem"
+    part_name = "{count:d}-{pem_type}-{orig_filename}.pem"
+    new_file_name = part_name.format(count=pem_blob.count,
+                                     orig_filename=orig_filename,
+                                     pem_type=pem_blob.pem_type)
+
+    log.debug("path %s, basename %s, parts %s, orig_filename %s, "
               "part_name %s new_file_name %s",
-              path, basename, parts, name, part_name, new_file_name)
+              path, basename, parts, orig_filename, part_name, new_file_name)
+
     fo = open(new_file_name, 'w')
-    fo.write(pem_blob.data)
+    fo.write(str(pem_blob))
     fo.close()
 
 
