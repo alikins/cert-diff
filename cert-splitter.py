@@ -2,6 +2,7 @@
 
 import logging
 import os
+import subprocess
 import sys
 
 log = logging.getLogger(__name__)
@@ -231,6 +232,17 @@ def write_pem(pem_blob):
     fo.close()
 
 
+def invoke_x509(pem_string):
+    "Takes pem string, invoke 'openssl x509' on it with the string as stdin."
+    cmd = ["openssl", "x509", "-text", "-noout"]
+
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    output = p.communicate(input=pem_string)[0]
+    print output
+
+
 def open_pem_files(filenames):
     """return a generator that generates PemFile objects."""
     for filename in filenames:
@@ -259,7 +271,8 @@ def main():
             log.debug("filename=%s type=%s",
                       pem_blob.filename,
                       pem_blob.pem_type)
-            write_pem(pem_blob)
+#            write_pem(pem_blob)
+            invoke_x509(str(pem_blob))
 
 
 if __name__ == "__main__":
