@@ -39,7 +39,7 @@ class PemFile(object):
             with OpenFileOrStdin(self.name, 'r') as fo:
                 for line in fo.readlines():
                     yield line
-        except EnvironmentError, e:
+        except EnvironmentError as e:
             log.error(e)
             raise StopIteration
 
@@ -63,7 +63,6 @@ class Pem(object):
     def __iter__(self):
         for pem_blob_data in self.split(self.fo):
             yield pem_blob_data
-
 
     # re.finditer() isn't great for huge strings with back references.
     # A test case with a thousand pems in it uses 100% cpu for minutes.
@@ -93,7 +92,7 @@ class Pem(object):
             if not current_blob:
                 continue
 
-            #log.debug(current_blob)
+            # log.debug(current_blob)
             # in mid-pem blob, not the end
             if not line.startswith(self.pem_end):
                 current_blob.append(line)
@@ -154,13 +153,20 @@ class PemTypes(object):
                    ('CMS', 'cms')]
 
     # build a map of marker string -> our pem type label
-    mapper = dict([(marker_format % type_marker, type_label)
-                   for (type_marker, type_label) in pem_markers])
+    # mapper = dict([(marker_format % type_marker, type_label)
+    #               for (type_marker, type_label) in pem_markers])
+    # print(marker_format)
+    mapper = dict([("-----BEGIN %s--" % type_tuple[0], type_tuple[1])
+                   for type_tuple in pem_markers])
+    # print(mapper)
 
     @classmethod
     def lookup_by_beginline(cls, beginline):
         """Pass in the BEGIN line, and we'll try to figure it out."""
+        # print(beginline)
         for type_marker in cls.mapper:
+            # print("type_marker: %s" % type_marker)
+            # print("begin_line : %s" % beginline[0:len(type_marker)])
             if beginline[0:len(type_marker)] == type_marker:
                 return PemType(cls.mapper[type_marker])
 
@@ -193,12 +199,16 @@ class PemBlobData(object):
     def firstline(self, line):
         self.append_line(line)
         self.pem_type = PemTypes.lookup_by_beginline(line)
+        # print('self.pem_type: %s' % self.pem_type)
 
     def end(self, line):
         self.append_line(line)
 
     def __str__(self):
         return ''.join(self.data)
+
+    def to_bytes(self):
+        return b''.join([x.encode() for x in self.data])
 
 
 # a pem writer that didn't block would be faster...
@@ -232,6 +242,10 @@ def write_pem(pem_blob):
     fo.close()
 
 
+def concat_pem(pem_blob, dest_fo):
+    dest_fo.write(str(pem_blob))
+
+
 def invoke_x509(pem_string):
     "Takes pem string, invoke 'openssl x509' on it with the string as stdin."
     cmd = ["openssl", "x509", "-text", "-noout"]
@@ -240,7 +254,7 @@ def invoke_x509(pem_string):
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
     output = p.communicate(input=pem_string)[0]
-    print output
+    print(output.decode())
 
 
 def open_pem_files(filenames):
@@ -265,14 +279,20 @@ def main():
     # pem_gen = (Pem(pem_fo) for pem_fo in pem_fos)
     # [[log.debug(pem_blob) for pem_blob in pem] for pem in pem_gen]
 
+    dest_fo = open('pem_from_stdout.pem', 'w')
+
     for pem_fo in pem_fos:
         pem = Pem(pem_fo)
         for pem_blob in pem:
             log.debug("filename=%s type=%s",
                       pem_blob.filename,
                       pem_blob.pem_type)
-#            write_pem(pem_blob)
-            invoke_x509(str(pem_blob))
+            write_pem(pem_blob)
+            # invoke_x509(str(pem_blob))
+            invoke_x509(pem_blob.to_bytes())
+
+            dest_fo.write(str(pem_blob))
+    dest_fo.close()
 
 
 if __name__ == "__main__":
